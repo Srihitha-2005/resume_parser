@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Upload Resumes - SmartHire</title>
+    <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+    <header>
+        <div class="title">SmartHire</div>
+        <nav>
+            <a href="/">Home</a>
+            <a href="/about">About</a>
+            <a href="/contact">Contact</a>
+            <a href="/logout">Logout</a>
+        </nav>
+    </header>
+    <main class="upload-container">
+        <h2>Upload Resumes for Matching</h2>
+        <form method="POST" enctype="multipart/form-data" class="upload-form" id="uploadForm">
+            <div class="form-group">
+                <label for="job_description">Job Description:</label>
+                <textarea id="job_description" name="job_description" required></textarea>
+            </div>
+            
+            <div class="upload-area" id="dropZone">
+                <div class="upload-icon">📁</div>
+                <p>Drag & drop multiple resumes here or</p>
+                <label for="resumes" class="browse-btn">Browse Files</label>
+                <input type="file" id="resumes" name="resumes" multiple accept=".pdf,.docx,.txt" required>
+                <div id="fileList" class="file-list">
+                    <div class="no-files">No files selected</div>
+                </div>
+            </div>
+            
+            <button type="submit" class="submit-btn">Analyze Resumes</button>
+        </form>
+        
+        {% if best_match %}
+        <div class="best-match">
+            <h3>🌟 Best Match</h3>
+            <div class="match-card">
+                <p><strong>Name:</strong> {{ best_match.name }}</p>
+                <p><strong>Email:</strong> {{ best_match.email }}</p>
+                <p><strong>Phone:</strong> {{ best_match.phone }}</p>
+                <p><strong>Score:</strong> {{ best_match.score }}</p>
+                <p><strong>File:</strong> {{ best_match.filename }}</p>
+            </div>
+        </div>
+        {% endif %}
+        
+        {% if results %}
+        <div class="results-section">
+            <h3>All Results (Sorted by Match Score)</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>File</th>
+                        <th>Name</th>
+                        <th>Email</th>
+                        <th>Phone</th>
+                        <th>Match Score</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for res in results %}
+                    <tr class="{{ 'highlight' if res == best_match else '' }}">
+                        <td>{{ res.filename }}</td>
+                        <td>{{ res.name }}</td>
+                        <td>{{ res.email }}</td>
+                        <td>{{ res.phone }}</td>
+                        <td>{{ res.score }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+    </main>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const dropZone = document.getElementById('dropZone');
+            const fileInput = document.getElementById('resumes');
+            const fileList = document.getElementById('fileList');
+            const form = document.getElementById('uploadForm');
+            let files = [];
+            
+            // Prevent default drag behaviors
+            ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+                dropZone.addEventListener(eventName, preventDefaults, false);
+                document.body.addEventListener(eventName, preventDefaults, false);
+            });
+            
+            // Highlight drop zone when item is dragged over it
+            ['dragenter', 'dragover'].forEach(eventName => {
+                dropZone.addEventListener(eventName, highlight, false);
+            });
+            
+            ['dragleave', 'drop'].forEach(eventName => {
+                dropZone.addEventListener(eventName, unhighlight, false);
+            });
+            
+            // Handle dropped files
+            dropZone.addEventListener('drop', handleDrop, false);
+            
+            // Handle selected files
+            fileInput.addEventListener('change', handleFileSelect, false);
+            
+            function preventDefaults(e) {
+                e.preventDefault();
+                e.stopPropagation();
+            }
+            
+            function highlight() {
+                dropZone.classList.add('highlight');
+            }
+            
+            function unhighlight() {
+                dropZone.classList.remove('highlight');
+            }
+            
+            function handleDrop(e) {
+                const dt = e.dataTransfer;
+                const newFiles = dt.files;
+                if (newFiles.length > 0) {
+                    addFiles(newFiles);
+                }
+            }
+            
+            function handleFileSelect() {
+                if (this.files.length > 0) {
+                    addFiles(this.files);
+                }
+            }
+            
+            function addFiles(newFiles) {
+                // Convert FileList to array and add to our files array
+                files = files.concat(Array.from(newFiles));
+                updateFileList();
+                
+                // Update the actual file input (needed for form submission)
+                const dataTransfer = new DataTransfer();
+                files.forEach(file => dataTransfer.items.add(file));
+                fileInput.files = dataTransfer.files;
+            }
+            
+            function updateFileList() {
+                fileList.innerHTML = '';
+                
+                if (files.length === 0) {
+                    fileList.innerHTML = '<div class="no-files">No files selected</div>';
+                    return;
+                }
+                
+                files.forEach((file, index) => {
+                    const fileItem = document.createElement('div');
+                    fileItem.className = 'file-item';
+                    fileItem.innerHTML = `
+                        <span class="file-name">${file.name}</span>
+                        <span class="file-size">(${formatFileSize(file.size)})</span>
+                        <button type="button" class="remove-file" data-index="${index}">×</button>
+                    `;
+                    fileList.appendChild(fileItem);
+                });
+                
+                // Add event listeners to remove buttons
+                document.querySelectorAll('.remove-file').forEach(button => {
+                    button.addEventListener('click', function() {
+                        const index = parseInt(this.getAttribute('data-index'));
+                        removeFile(index);
+                    });
+                });
+            }
+            
+            function removeFile(index) {
+                files.splice(index, 1);
+                updateFileList();
+                
+                // Update the file input after removal
+                const dataTransfer = new DataTransfer();
+                files.forEach(file => dataTransfer.items.add(file));
+                fileInput.files = dataTransfer.files;
+            }
+            
+            function formatFileSize(bytes) {
+                if (bytes === 0) return '0 Bytes';
+                const k = 1024;
+                const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+                const i = Math.floor(Math.log(bytes) / Math.log(k));
+                return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+            }
+        });
+    </script>
+</body>
+</html>
